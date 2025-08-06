@@ -95,7 +95,7 @@ function App() {
       
       {permissionsGranted ? (
         <WebView
-          source={{uri: 'https://attendace-webview-test.vercel.app'}}
+          source={{uri: 'https://online.tirtadaroy.co.id/absenlokasi/absen.php'}}
           style={styles.webview}
           onMessage={handleWebViewMessage}
           onError={handleWebViewError}
