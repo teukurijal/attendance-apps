@@ -28,11 +28,9 @@ function App() {
     const permissions: Permission[] = Platform.select({
       android: [
         PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION,
-        PERMISSIONS.ANDROID.CAMERA,
       ],
       ios: [
         PERMISSIONS.IOS.LOCATION_WHEN_IN_USE,
-        PERMISSIONS.IOS.CAMERA,
       ],
     }) as Permission[];
 
@@ -47,8 +45,8 @@ function App() {
         setPermissionsGranted(true);
       } else {
         Alert.alert(
-          'Permissions Required',
-          'This app requires location and camera permissions for attendance tracking.',
+          'Location Permission Required',
+          'This app requires location permission for attendance tracking.',
           [
             {
               text: 'Retry',
@@ -84,7 +82,7 @@ function App() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#0066cc" />
-        <Text style={styles.loadingText}>Setting up permissions...</Text>
+        <Text style={styles.loadingText}>Setting up location access...</Text>
       </View>
     );
   }
@@ -119,7 +117,7 @@ function App() {
       ) : (
         <View style={styles.permissionContainer}>
           <Text style={styles.permissionText}>
-            Please grant location and camera permissions to continue with attendance tracking.
+            Please grant location permission to continue with attendance tracking.
           </Text>
         </View>
       )}
