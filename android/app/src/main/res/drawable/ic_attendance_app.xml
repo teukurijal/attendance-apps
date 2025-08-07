@@ -8,7 +8,7 @@
     <!-- Background -->
     <path
         android:pathData="M8,0 L40,0 C44.4,0 48,3.6 48,8 L48,40 C48,44.4 44.4,48 40,48 L8,48 C3.6,48 0,44.4 0,40 L0,8 C0,3.6 3.6,0 8,0 Z"
-        android:fillColor="#2563EB" />
+        android:fillColor="#28A745" />
     
     <!-- Clock -->
     <path

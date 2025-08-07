@@ -81,7 +81,7 @@ function App() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0066cc" />
+        <ActivityIndicator size="large" color="#28A745" />
         <Text style={styles.loadingText}>Setting up location access...</Text>
       </View>
     );
@@ -109,8 +109,8 @@ function App() {
           startInLoadingState={true}
           renderLoading={() => (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#0066cc" />
-              <Text style={styles.loadingText}>Loading attendance page...</Text>
+              <ActivityIndicator size="large" color="#28A745" />
+              <Text style={styles.loadingText}>Loading...</Text>
             </View>
           )}
         />
