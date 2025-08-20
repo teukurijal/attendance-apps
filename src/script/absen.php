@@ -14,19 +14,6 @@ if (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'applicati
 if (isset($_GET['api']) && $_GET['api'] == '1') {
     $isApiRequest = true;
 }
-// Detect React Native requests
-if (isset($_SERVER['HTTP_USER_AGENT'])) {
-    $userAgent = $_SERVER['HTTP_USER_AGENT'];
-    if (strpos($userAgent, 'ReactNativeWebView') !== false || 
-        strpos($userAgent, 'ReactNative') !== false ||
-        strpos($userAgent, 'okhttp') !== false) {
-        $isApiRequest = true;
-    }
-}
-// Additional headers that React Native might send
-if (isset($_SERVER['HTTP_X_PLATFORM'])) {
-    $isApiRequest = true;
-}
 
 if (!isset($_SESSION['nik'])) {
     if ($isApiRequest) {
@@ -150,33 +137,6 @@ function shouldCheckFakeGPS() {
   return false;
 }
 
-function detectPlatform() {
-  // Check for Android app
-  if (window.AndroidApp) {
-    return 'android';
-  }
-  
-  // Check for React Native WebView (cross-platform)
-  if (window.ReactNativeWebView) {
-    return 'react-native';
-  }
-  
-  // Check for iOS app (React Native bridge)
-  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iosApp) {
-    return 'ios';
-  }
-  
-  // Check user agent for mobile devices
-  const userAgent = navigator.userAgent.toLowerCase();
-  if (/iphone|ipad|ipod/.test(userAgent)) {
-    return 'ios-web';
-  } else if (/android/.test(userAgent)) {
-    return 'android-web';
-  }
-  
-  return 'web';
-}
-
 function updatePosition(lat, lng, akurasi) {
   currentLat = lat;
   currentLng = lng;
@@ -227,7 +187,7 @@ function updatePosition(lat, lng, akurasi) {
       lng: currentLng,
       accuracy: currentAccuracy,
       timestamp: Math.floor(Date.now() / 1000),
-      client: detectPlatform()
+      client: 'web'
     })
   })
   .then(res => res.json())
@@ -263,106 +223,15 @@ function handleFakeGpsFromAndroid(isFake) {
     }
 }
 
-function handleFakeGpsFromIOS(isFake) {
-    const statusBox = document.getElementById("status");
-    const absenMasukBtn = document.getElementById("btn-absen-masuk");
-    const absenKeluarBtn = document.getElementById("btn-absen-keluar");
-
-    if (isFake) {
-        statusBox.innerText = "🚨 Lokasi palsu terdeteksi dari sistem iOS!";
-        absenMasukBtn.disabled = true;
-        absenKeluarBtn.disabled = true;
-    } else {
-        statusBox.innerText = "✅ Lokasi valid terdeteksi dari iOS.";
-        absenMasukBtn.disabled = false;
-        absenKeluarBtn.disabled = false;
-    }
-}
-
-function handleFakeGpsFromApp(isFake, platform = 'mobile') {
-    const statusBox = document.getElementById("status");
-    const absenMasukBtn = document.getElementById("btn-absen-masuk");
-    const absenKeluarBtn = document.getElementById("btn-absen-keluar");
-
-    if (isFake) {
-        statusBox.innerText = `🚨 Lokasi palsu terdeteksi dari sistem ${platform}!`;
-        absenMasukBtn.disabled = true;
-        absenKeluarBtn.disabled = true;
-        
-        // Send feedback to React Native
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            action: 'fakeGpsDetected',
-            isFake: true,
-            platform: platform,
-            timestamp: new Date().toISOString()
-          }));
-        }
-    } else {
-        statusBox.innerText = `✅ Lokasi valid terdeteksi dari ${platform}.`;
-        absenMasukBtn.disabled = false;
-        absenKeluarBtn.disabled = false;
-        
-        // Send feedback to React Native
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            action: 'locationValid',
-            isFake: false,
-            platform: platform,
-            timestamp: new Date().toISOString()
-          }));
-        }
-    }
-}
 
 
-
-function updateLocationFromApp(lat, lng, accuracy = 5, isValid = true, platform = null) {
-  // Check for Android app
+function updateLocationFromApp(lat, lng) {
   if (window.AndroidApp && AndroidApp.isLocationValid && !AndroidApp.isLocationValid()) {
-    statusBox.innerText = "🚨 Lokasi palsu terdeteksi dari sistem Android!";
+    statusBox.innerText = "🚨 Lokasi palsu terdeteksi dari sistem Android! (Testing Mode)";
     alert("🚫 Lokasi tidak valid.");
     return;
   }
-  
-  // Check location validity from any platform
-  if (!isValid) {
-    const detectedPlatform = platform || detectPlatform();
-    statusBox.innerText = `🚨 Lokasi palsu terdeteksi dari sistem ${detectedPlatform}!`;
-    alert("🚫 Lokasi tidak valid.");
-    return;
-  }
-  
-  // Check for React Native bridge (cross-platform)
-  if (window.ReactNativeWebView) {
-    console.log("✅ React Native WebView detected");
-    // Send location update confirmation back to React Native
-    window.ReactNativeWebView.postMessage(JSON.stringify({
-      action: 'locationUpdated',
-      latitude: lat,
-      longitude: lng,
-      accuracy: accuracy,
-      isValid: isValid,
-      timestamp: new Date().toISOString()
-    }));
-  }
-  
-  // Check for iOS app (React Native bridge)
-  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iosApp) {
-    console.log("✅ iOS app detected");
-  }
-  
-  updatePosition(lat, lng, accuracy);
-}
-
-// Function for iOS to validate location and update position
-function updateLocationFromIOS(lat, lng, accuracy = 5, isValid = true) {
-  updateLocationFromApp(lat, lng, accuracy, isValid, 'iOS');
-}
-
-// Function for React Native to validate location and update position  
-function updateLocationFromReactNative(lat, lng, accuracy = 5, isValid = true) {
-  updateLocationFromApp(lat, lng, accuracy, isValid, 'React Native');
+  updatePosition(lat, lng, 5);
 }
 
 function startGPS() {
@@ -415,7 +284,6 @@ function submitAbsen(tipe) {
       alert(`✅ Absen berhasil!`);
       statusBox.innerText = `✅ Absen ${tipe} berhasil dikirim pukul ${now}`;
 
-      // Handle Android app callbacks
       if (window.AndroidApp) {
         if (tipe === 'masuk') {
           AndroidApp.startTracking?.();
@@ -425,72 +293,15 @@ function submitAbsen(tipe) {
           AndroidApp.cancelReminderAlarm?.();
         }
       }
-      
-      // Handle iOS app callbacks (React Native bridge)
-      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iosApp) {
-        const message = {
-          action: tipe === 'masuk' ? 'startTracking' : 'stopTracking',
-          type: tipe,
-          timestamp: new Date().toISOString()
-        };
-        window.webkit.messageHandlers.iosApp.postMessage(message);
-      }
-      
-      // Handle React Native WebView (cross-platform)
-      if (window.ReactNativeWebView) {
-        const message = {
-          action: tipe === 'masuk' ? 'startTracking' : 'stopTracking',
-          type: tipe,
-          timestamp: new Date().toISOString(),
-          success: true,
-          attendanceId: data.id || null
-        };
-        window.ReactNativeWebView.postMessage(JSON.stringify(message));
-        
-        // Set reminder alarm for React Native
-        if (tipe === 'masuk') {
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            action: 'setReminderAlarm',
-            hour: 17,
-            minute: 0,
-            timestamp: new Date().toISOString()
-          }));
-        } else if (tipe === 'keluar') {
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            action: 'cancelReminderAlarm',
-            timestamp: new Date().toISOString()
-          }));
-        }
-      }
 
       if (tipe === 'masuk') absenMasukBtn.disabled = true;
       if (tipe === 'keluar') absenKeluarBtn.disabled = true;
     } else {
       alert("❌ Gagal absen: " + data.message);
-      
-      // Send error to React Native
-      if (window.ReactNativeWebView) {
-        window.ReactNativeWebView.postMessage(JSON.stringify({
-          action: 'attendanceError',
-          type: tipe,
-          error: data.message,
-          timestamp: new Date().toISOString()
-        }));
-      }
     }
   })
-  .catch((error) => {
+  .catch(() => {
     alert("❌ Gagal mengirim data absen.");
-    
-    // Send network error to React Native
-    if (window.ReactNativeWebView) {
-      window.ReactNativeWebView.postMessage(JSON.stringify({
-        action: 'attendanceNetworkError',
-        type: tipe,
-        error: error.toString(),
-        timestamp: new Date().toISOString()
-      }));
-    }
   });
 }
 
@@ -512,35 +323,12 @@ startGPS();
 // setInterval(checkSession, 30000);
 
 <?php if (isset($_SESSION['nik'], $_SESSION['device_id'])): ?>
-// Set credentials for Android app
 if (window.AndroidApp && AndroidApp.setCredentials) {
   AndroidApp.setCredentials(
     "<?= htmlspecialchars($_SESSION['nik']) ?>",
     "<?= htmlspecialchars($_SESSION['device_id']) ?>"
   );
   console.log("✅ AndroidApp.setCredentials dipanggil ulang");
-}
-
-// Set credentials for iOS app (React Native bridge)
-if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.iosApp) {
-  const credentials = {
-    nik: "<?= htmlspecialchars($_SESSION['nik']) ?>",
-    device_id: "<?= htmlspecialchars($_SESSION['device_id']) ?>",
-    action: 'setCredentials'
-  };
-  window.webkit.messageHandlers.iosApp.postMessage(credentials);
-  console.log("✅ iOS app credentials set");
-}
-
-// Set credentials for React Native WebView (cross-platform)
-if (window.ReactNativeWebView) {
-  const credentials = {
-    nik: "<?= htmlspecialchars($_SESSION['nik']) ?>",
-    device_id: "<?= htmlspecialchars($_SESSION['device_id']) ?>",
-    action: 'setCredentials'
-  };
-  window.ReactNativeWebView.postMessage(JSON.stringify(credentials));
-  console.log("✅ React Native WebView credentials set");
 }
 <?php endif; ?>
 </script>
