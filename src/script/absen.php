@@ -14,6 +14,21 @@ if (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'applicati
 if (isset($_GET['api']) && $_GET['api'] == '1') {
     $isApiRequest = true;
 }
+// start modified react-native script >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+// Detect React Native requests
+if (isset($_SERVER['HTTP_USER_AGENT'])) {
+    $userAgent = $_SERVER['HTTP_USER_AGENT'];
+    if (strpos($userAgent, 'ReactNativeWebView') !== false || 
+        strpos($userAgent, 'ReactNative') !== false ||
+        strpos($userAgent, 'okhttp') !== false) {
+        $isApiRequest = true;
+    }
+}
+// Additional headers that React Native might send
+if (isset($_SERVER['HTTP_X_PLATFORM'])) {
+    $isApiRequest = true;
+}
+// end modified react-native script >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 if (!isset($_SESSION['nik'])) {
     if ($isApiRequest) {
@@ -225,13 +240,77 @@ function handleFakeGpsFromAndroid(isFake) {
 
 
 
-function updateLocationFromApp(lat, lng) {
+function updateLocationFromApp(lat, lng, accuracy = 5, isValid = true, platform = null) {
   if (window.AndroidApp && AndroidApp.isLocationValid && !AndroidApp.isLocationValid()) {
     statusBox.innerText = "🚨 Lokasi palsu terdeteksi dari sistem Android! (Testing Mode)";
     alert("🚫 Lokasi tidak valid.");
     return;
   }
-  updatePosition(lat, lng, 5);
+  // start modified react-native script >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+  // Check location validity from any platform
+  if (!isValid) {
+    const detectedPlatform = platform;
+    statusBox.innerText = `🚨 Lokasi palsu terdeteksi dari sistem!`;
+    alert("🚫 Lokasi tidak valid.");
+    return;
+  }
+  
+  // Send location update confirmation to React Native
+  if (window.ReactNativeWebView) {
+    window.ReactNativeWebView.postMessage(JSON.stringify({
+      type: 'LOCATION_UPDATED',
+      latitude: lat,
+      longitude: lng,
+      accuracy: accuracy,
+      isValid: isValid,
+      timestamp: new Date().toISOString()
+    }));
+  }
+  
+  updatePosition(lat, lng, accuracy);
+}
+
+// Function for React Native to validate location and update position  
+function updateLocationFromReactNative(lat, lng, accuracy = 5, isValid = true) {
+  updateLocationFromApp(lat, lng, accuracy, isValid, 'React Native');
+}
+
+// Function to handle fake GPS detection from React Native
+function handleFakeGpsFromReactNative(isFake) {
+  const statusBox = document.getElementById("status");
+  const absenMasukBtn = document.getElementById("btn-absen-masuk");
+  const absenKeluarBtn = document.getElementById("btn-absen-keluar");
+
+  if (isFake) {
+    statusBox.innerText = "🚨 Lokasi palsu terdeteksi dari sistem";
+    absenMasukBtn.disabled = true;
+    absenKeluarBtn.disabled = true;
+    
+    // Send feedback to React Native
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'FAKE_GPS_DETECTED',
+        isFake: true,
+        platform: 'React Native',
+        timestamp: new Date().toISOString()
+      }));
+    }
+  } else {
+    statusBox.innerText = "✅ Lokasi valid terdeteksi dari sistem.";
+    absenMasukBtn.disabled = false;
+    absenKeluarBtn.disabled = false;
+    
+    // Send feedback to React Native
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'LOCATION_VALID',
+        isFake: false,
+        platform: 'React Native',
+        timestamp: new Date().toISOString()
+      }));
+    }
+  }
+  // end modified react-native script >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 }
 
 function startGPS() {
@@ -293,15 +372,66 @@ function submitAbsen(tipe) {
           AndroidApp.cancelReminderAlarm?.();
         }
       }
+      // start modified react-native script >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+      // Handle React Native WebView callbacks
+      if (window.ReactNativeWebView) {
+        const message = {
+          type: tipe === 'masuk' ? 'START_TRACKING' : 'STOP_TRACKING',
+          type: tipe,
+          timestamp: new Date().toISOString(),
+          success: true,
+          attendanceId: data.id || null
+        };
+        window.ReactNativeWebView.postMessage(JSON.stringify(message));
+        
+        // Set reminder alarm for React Native
+        if (tipe === 'masuk') {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'SET_REMINDER_ALARM',
+            hour: 17,
+            minute: 0,
+            timestamp: new Date().toISOString()
+          }));
+        } else if (tipe === 'keluar') {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'CANCEL_REMINDER_ALARM',
+            timestamp: new Date().toISOString()
+          }));
+        }
+      }
+      // start modified react-native script >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
 
       if (tipe === 'masuk') absenMasukBtn.disabled = true;
       if (tipe === 'keluar') absenKeluarBtn.disabled = true;
     } else {
       alert("❌ Gagal absen: " + data.message);
+      // start modified react-native script >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+      // Send error to React Native
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'ATTENDANCE_ERROR',
+          type: tipe,
+          error: data.message,
+          timestamp: new Date().toISOString()
+        }));
+      }
     }
+    // end modified react-native script >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
   })
-  .catch(() => {
+  .catch((error) => {
     alert("❌ Gagal mengirim data absen.");
+    // start modified react-native script >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    // Send network error to React Native
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'ATTENDANCE_NETWORK_ERROR',
+        type: tipe,
+        error: error.toString(),
+        timestamp: new Date().toISOString()
+      }));
+    }
+    // end modified react-native script >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
   });
 }
 
@@ -330,6 +460,18 @@ if (window.AndroidApp && AndroidApp.setCredentials) {
   );
   console.log("✅ AndroidApp.setCredentials dipanggil ulang");
 }
+// start modified react-native script >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+// Set credentials for React Native WebView
+if (window.ReactNativeWebView) {
+  const credentials = {
+    type: 'SET_CREDENTIALS',
+    nik: "<?= htmlspecialchars($_SESSION['nik']) ?>",
+    device_id: "<?= htmlspecialchars($_SESSION['device_id']) ?>"
+  };
+  window.ReactNativeWebView.postMessage(JSON.stringify(credentials));
+  console.log("✅ React Native WebView credentials set");
+}
+// end modified react-native script >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 <?php endif; ?>
 </script>
 
