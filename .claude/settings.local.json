@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(./gradlew:*)"
+      "Bash(./gradlew:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx react-native run-android:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }
