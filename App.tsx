@@ -82,9 +82,13 @@ function App() {
     console.log('WebView loading finished');
     if (!locationTracking && permissionsGranted) {
       try {
-        // You can customize this NIK - it should come from user login or stored data
-        // For now, using a default value - replace with actual user NIK
-        const userNik = '222'; // TODO: Get this from user login/storage
+        // Get user NIK from stored credentials
+        const userNik = await AsyncStorage.getItem('userNik');
+        
+        if (!userNik) {
+          console.log('⚠️ No user NIK found in storage, waiting for user login');
+          return;
+        }
         
         await setupLocationService(userNik);
         await LocationService.startLocationTracking();
