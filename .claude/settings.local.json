@@ -4,7 +4,8 @@
       "Bash(./gradlew:*)",
       "Bash(npx tsc:*)",
       "Bash(npx react-native run-android:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(gradlew.bat assembleRelease:*)"
     ],
     "deny": []
   }

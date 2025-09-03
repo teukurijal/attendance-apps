@@ -81,15 +81,15 @@ class LocationService {
       const isLowPowerMode = await this.isLowPowerMode();
       
       if (isLowPowerMode) {
-        console.log('🔋 Low power mode detected, using 15s interval');
+        // console.log('🔋 Low power mode detected, using 15s interval');
         return 15000; // 15 seconds
       }
       
       // Use 10 seconds for normal battery mode
-      console.log('🔋 Normal battery mode, using 10s interval');
+      // console.log('🔋 Normal battery mode, using 10s interval');
       return 10000; // 10 seconds
     } catch (error) {
-      console.warn('⚠️ Failed to get power mode info, using default 10s interval:', error);
+      // console.warn('⚠️ Failed to get power mode info, using default 10s interval:', error);
       return 10000; // Default to 10 seconds
     }
   }
@@ -100,16 +100,30 @@ class LocationService {
       // Check if background processing is limited
       const backgroundMode = AppState.currentState === 'background';
       
-      // For Android, we can check power save mode
       if (Platform.OS === 'android' && NativeModules.PowerManager) {
+        // For Android, we can check power save mode
         const isPowerSaveMode = await NativeModules.PowerManager.isPowerSaveMode();
         return isPowerSaveMode || backgroundMode;
+      } else if (Platform.OS === 'ios') {
+        // For iOS, check Low Power Mode if available
+        try {
+          if (NativeModules.RNDeviceInfo && NativeModules.RNDeviceInfo.isPowerSaveModeEnabled) {
+            const isLowPowerMode = await NativeModules.RNDeviceInfo.isPowerSaveModeEnabled();
+            // console.log('🔋 iOS Low Power Mode:', isLowPowerMode);
+            return isLowPowerMode || backgroundMode;
+          }
+        } catch (iosError) {
+          // console.warn('⚠️ iOS Low Power Mode detection not available:', iosError);
+        }
+        
+        // Fallback for iOS: use app state and memory pressure heuristics
+        return backgroundMode;
       }
       
-      // For iOS or fallback, use memory and app state heuristics
+      // For other platforms or fallback, use app state heuristics
       return backgroundMode;
     } catch (error) {
-      console.warn('⚠️ Failed to detect power mode:', error);
+      // console.warn('⚠️ Failed to detect power mode:', error);
       return false; // Default to normal mode
     }
   }
@@ -121,7 +135,7 @@ class LocationService {
       const currentInterval = this.config.interval;
       
       if (newInterval !== currentInterval) {
-        console.log(`🔄 Adjusting tracking interval from ${currentInterval}ms to ${newInterval}ms`);
+        // console.log(`🔄 Adjusting tracking interval from ${currentInterval}ms to ${newInterval}ms`);
         
         // Clear current interval
         if (this.intervalId) {
@@ -136,7 +150,7 @@ class LocationService {
             const deviceId = await AsyncStorage.getItem('deviceId');
             
             if (!userNik || !deviceId || userNik.trim() === '' || deviceId.trim() === '') {
-              console.warn('⚠️ Skipping location API call: userNik or deviceId is empty/null');
+              // console.warn('⚠️ Skipping location API call: userNik or deviceId is empty/null');
               return;
             }
             
@@ -148,7 +162,7 @@ class LocationService {
         this.config.interval = newInterval;
       }
     } catch (error) {
-      console.error('❌ Failed to adjust tracking interval:', error);
+      // console.error('❌ Failed to adjust tracking interval:', error);
     }
   }
 
@@ -158,15 +172,16 @@ class LocationService {
       let deviceId = await AsyncStorage.getItem('deviceId');
       if (!deviceId) {
         // Generate device ID similar to web version
-        deviceId = `RN_${Platform.OS}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const platformPrefix = Platform.OS === 'ios' ? 'RN_iOS' : `RN_${Platform.OS}`;
+        deviceId = `${platformPrefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         await AsyncStorage.setItem('deviceId', deviceId);
-        console.log('🔧 Generated new device ID:', deviceId);
+        // console.log('🔧 Generated new device ID:', deviceId);
       }
       
       // Load session cookies
       await this.loadSessionCookies();
     } catch (error) {
-      console.error('Error initializing device ID:', error);
+      // console.error('Error initializing device ID:', error);
     }
   }
 
@@ -185,10 +200,32 @@ class LocationService {
           }
         );
         return granted === PermissionsAndroid.RESULTS.GRANTED;
+      } else if (Platform.OS === 'ios') {
+        // For iOS, we need to test location permissions by attempting to get location
+        return new Promise((resolve) => {
+          Geolocation.getCurrentPosition(
+            () => {
+              // console.log('✅ iOS location permission granted');
+              resolve(true);
+            },
+            (error) => {
+              // console.log('❌ iOS location permission denied:', error);
+              if (error.code === 1) { // PERMISSION_DENIED
+                Alert.alert(
+                  'Location Permission Required',
+                  'Please enable location services for this app in Settings > Privacy & Security > Location Services.',
+                  [{ text: 'OK' }]
+                );
+              }
+              resolve(false);
+            },
+            { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 }
+          );
+        });
       }
-      return true; // iOS handles permissions through Info.plist
+      return true;
     } catch (err) {
-      console.warn('Location permission error:', err);
+      // console.warn('Location permission error:', err);
       return false;
     }
   }
@@ -211,16 +248,24 @@ class LocationService {
   // Send location to API with retry logic
   async sendLocationToAPI(locationData: LocationData, retryCount: number = 0): Promise<ApiResponse> {
     try {
+      // Refresh session cookies before sending location
+      await this.loadSessionCookies();
+      
       // Check authentication before sending
       const isAuth = await this.isAuthenticated();
       if (!isAuth) {
+        // console.log('🔍 [Authentication Debug] Current auth status:', {
+        //   sessionCookies: this.sessionCookies.substring(0, 50) + '...',
+        //   cookiesLength: this.sessionCookies.length,
+        //   hasPhpSessId: this.sessionCookies.includes('PHPSESSID')
+        // });
         throw new Error('User not authenticated. Please login first.');
       }
       const userNik = await AsyncStorage.getItem('userNik');
       const deviceId = await AsyncStorage.getItem('deviceId');
 
       if (!userNik || !deviceId || userNik.trim() === '' || deviceId.trim() === '') {
-        console.warn('⚠️ Cannot send location: userNik or deviceId is empty/null');
+        // console.warn('⚠️ Cannot send location: userNik or deviceId is empty/null');
         throw new Error('User NIK or Device ID is empty or not set. Please login through WebView first.');
       }
 
@@ -230,30 +275,31 @@ class LocationService {
         latitude: locationData.coords.latitude,
         longitude: locationData.coords.longitude,
         accuracy: locationData.coords.accuracy || 0,
-        note: `auto log - realtime tracking (${new Date().toISOString()})`,
+        note: "Iphone",
         fake: 0,
         xposed: await this.detectRoot(),
         isvirtual: await this.detectMockLocation()
       };
 
-      console.log('📍 Sending location data (attempt ' + (retryCount + 1) + '):', {
-        url: `${this.API_BASE_URL}gps_log.php`,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        payload: {
-          ...payload,
-          lat_short: payload.latitude.toFixed(6),
-          lng_short: payload.longitude.toFixed(6)
-        }
-      });
+      // console.log('📍 API Payload Parameters:', payload);
+      // console.log('📍 Sending location data (attempt ' + (retryCount + 1) + '):', {
+      //   url: `${this.API_BASE_URL}gps_log.php`,
+      //   method: 'POST',
+      //   headers: {
+      //     'Content-Type': 'application/json',
+      //     'Accept': 'application/json',
+      //   },
+      //   payload: {
+      //     ...payload,
+      //     lat_short: payload.latitude.toFixed(6),
+      //     lng_short: payload.longitude.toFixed(6)
+      //   }
+      // });
 
       const controller = new AbortController();
       const timeoutDuration = this.retryConfig.apiTimeout;
       const timeoutId = setTimeout(() => {
-        console.log('⏰ API request timeout after', timeoutDuration/1000, 'seconds');
+        // console.log('⏰ API request timeout after', timeoutDuration/1000, 'seconds');
         controller.abort();
       }, timeoutDuration);
 
@@ -273,20 +319,20 @@ class LocationService {
       clearTimeout(timeoutId);
 
       const responseText = await response.text();
-      console.log('🌐 Network Response:', {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries()),
-        body: responseText.substring(0, 500) + (responseText.length > 500 ? '...' : '')
-      });
+      // console.log('🌐 Network Response:', {
+      //   status: response.status,
+      //   statusText: response.statusText,
+      //   headers: Object.fromEntries(response.headers.entries()),
+      //   body: responseText.substring(0, 500) + (responseText.length > 500 ? '...' : '')
+      // });
 
       if (!response.ok) {
-        console.error('❌ HTTP Error Details:', {
-          status: response.status,
-          statusText: response.statusText,
-          url: response.url,
-          body: responseText
-        });
+        // console.error('❌ HTTP Error Details:', {
+        //   status: response.status,
+        //   statusText: response.statusText,
+        //   url: response.url,
+        //   body: responseText
+        // });
         throw new Error(`HTTP ${response.status}: ${response.statusText} - ${responseText}`);
       }
 
@@ -294,13 +340,13 @@ class LocationService {
       try {
         responseData = JSON.parse(responseText);
       } catch (parseError) {
-        console.error('❌ JSON Parse Error:', parseError);
-        console.error('Raw response:', responseText);
+        // console.error('❌ JSON Parse Error:', parseError);
+        // console.error('Raw response:', responseText);
         throw new Error(`Invalid JSON response: ${responseText}`);
       }
       
       if (responseData.status === 'success') {
-        console.log('✅ Location sent successfully:', responseData.message);
+        // console.log('✅ Location sent successfully:', responseData.message);
         this.retryCount = 0; // Reset retry count on success
         this.isOnline = true;
         await this.processPendingRequests(); // Process any pending requests
@@ -309,28 +355,28 @@ class LocationService {
         throw new Error(responseData.message || 'Server returned error status');
       }
     } catch (error: any) {
-      console.error(`❌ Error sending location (attempt ${retryCount + 1}):`, {
-        message: error.message,
-        name: error.name,
-        stack: error.stack,
-        cause: error.cause,
-      });
+      // console.error(`❌ Error sending location (attempt ${retryCount + 1}):`, {
+      //   message: error.message,
+      //   name: error.name,
+      //   stack: error.stack,
+      //   cause: error.cause,
+      // });
       
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        console.error('🚫 Network fetch failed - possible connectivity issue');
-        console.error('💡 Check network connection or server availability');
+        // console.error('🚫 Network fetch failed - possible connectivity issue');
+        // console.error('💡 Check network connection or server availability');
       }
       
       if (error.name === 'AbortError') {
-        console.error('⏱️ Request timeout - server took too long to respond');
-        console.error('💡 Server may be overloaded or network is slow');
-        console.error('🔍 API URL:', `${this.API_BASE_URL}api/gps_log.php`);
+        // console.error('⏱️ Request timeout - server took too long to respond');
+        // console.error('💡 Server may be overloaded or network is slow');
+        // console.error('🔍 API URL:', `${this.API_BASE_URL}api/gps_log.php`);
       }
       
       // Handle network errors and retry logic
       if (retryCount < this.retryConfig.maxRetries && this.shouldRetry(error)) {
         const delay = this.retryConfig.retryDelay * Math.pow(this.retryConfig.backoffMultiplier, retryCount);
-        console.log(`⏳ Retrying in ${delay}ms...`);
+        // console.log(`⏳ Retrying in ${delay}ms...`);
         
         await new Promise(resolve => setTimeout(resolve, delay));
         return this.sendLocationToAPI(locationData, retryCount + 1);
@@ -349,7 +395,7 @@ class LocationService {
   async startLocationTracking(): Promise<void> {
     try {
       if (this.isTracking) {
-        console.log('Location tracking already active');
+        // console.log('Location tracking already active');
         return;
       }
 
@@ -358,7 +404,7 @@ class LocationService {
       const deviceId = await AsyncStorage.getItem('deviceId');
       
       if (!userNik || !deviceId) {
-        console.warn('⚠️ Cannot start location tracking: userNik or deviceId not set from WebView');
+        // console.warn('⚠️ Cannot start location tracking: userNik or deviceId not set from WebView');
         Alert.alert('Setup Required', 'Please login through the web interface first to enable location tracking.');
         return;
       }
@@ -369,7 +415,7 @@ class LocationService {
         return;
       }
 
-      console.log('🟢 Starting real-time location tracking...');
+      // console.log('🟢 Starting real-time location tracking...');
       this.isTracking = true;
 
       // Send initial location immediately
@@ -388,7 +434,7 @@ class LocationService {
           this.handleLocationUpdate(position);
         },
         (error) => {
-          console.error('Location watch error:', error);
+          // console.error('Location watch error:', error);
           this.handleLocationError(error);
         },
         {
@@ -408,7 +454,7 @@ class LocationService {
           const deviceId = await AsyncStorage.getItem('deviceId');
           
           if (!userNik || !deviceId || userNik.trim() === '' || deviceId.trim() === '') {
-            console.warn('⚠️ Skipping location API call: userNik or deviceId is empty/null');
+            // console.warn('⚠️ Skipping location API call: userNik or deviceId is empty/null');
             return;
           }
           
@@ -417,7 +463,7 @@ class LocationService {
       }, trackingInterval);
 
     } catch (error) {
-      console.error('Error starting location tracking:', error);
+      // console.error('Error starting location tracking:', error);
       this.isTracking = false;
     }
   }
@@ -436,20 +482,20 @@ class LocationService {
         timestamp: Date.now()
       }));
       
-      console.log('📍 Location updated:', {
-        lat: position.coords.latitude.toFixed(6),
-        lng: position.coords.longitude.toFixed(6),
-        accuracy: Math.round(position.coords.accuracy),
-      });
+      // console.log('📍 Location updated:', {
+      //   lat: position.coords.latitude.toFixed(6),
+      //   lng: position.coords.longitude.toFixed(6),
+      //   accuracy: Math.round(position.coords.accuracy),
+      // });
       
     } catch (error) {
-      console.error('Error handling location update:', error);
+      // console.error('Error handling location update:', error);
     }
   }
 
   // Handle location errors
   private handleLocationError(error: any): void {
-    console.error('Location error:', error);
+    // console.error('Location error:', error);
     
     switch (error?.code) {
       case 1: // PERMISSION_DENIED
@@ -457,13 +503,13 @@ class LocationService {
         this.stopLocationTracking();
         break;
       case 2: // POSITION_UNAVAILABLE
-        console.warn('Location unavailable, continuing to monitor...');
+        // console.warn('Location unavailable, continuing to monitor...');
         break;
       case 3: // TIMEOUT
-        console.warn('Location timeout, will retry automatically...');
+        // console.warn('Location timeout, will retry automatically...');
         break;
       default:
-        console.warn('Unknown location error:', error);
+        // console.warn('Unknown location error:', error);
     }
   }
 
@@ -478,14 +524,14 @@ class LocationService {
       await AsyncStorage.setItem('lastLocationUpdate', new Date().toISOString());
       
     } catch (error: any) {
-      console.error('Error logging location:', error);
+      // console.error('Error logging location:', error);
       this.handleLocationError(error);
     }
   }
 
   // Stop location tracking
   stopLocationTracking(): void {
-    console.log('🔴 Stopping location tracking...');
+    // console.log('🔴 Stopping location tracking...');
     
     this.isTracking = false;
     
@@ -519,23 +565,40 @@ class LocationService {
   private async detectMockLocation(): Promise<number> {
     // Mock location detection - can be enhanced
     try {
-      // Check if running on emulator
-      const isEmulator = Platform.OS === 'android' && (
-        Platform.constants.Brand?.includes('google') ||
-        Platform.constants.Model?.includes('sdk') ||
-        Platform.constants.Manufacturer?.includes('Google')
-      );
+      let isMockLocation = false;
       
-      if (isEmulator) {
-        console.log('🤖 Running on Android emulator - mock location detected');
-        this.notifyWebViewFakeGps(true);
-        return 1; // Emulator = mock location
+      if (Platform.OS === 'android') {
+        // Check if running on Android emulator
+        const isAndroidEmulator = (
+          Platform.constants.Brand?.includes('google') ||
+          Platform.constants.Model?.includes('sdk') ||
+          Platform.constants.Manufacturer?.includes('Google')
+        );
+        
+        if (isAndroidEmulator) {
+          // console.log('🤖 Running on Android emulator - mock location detected');
+          isMockLocation = true;
+        }
+      } else if (Platform.OS === 'ios') {
+        // Check if running on iOS simulator
+        const isIOSSimulator = (
+          Platform.constants.systemName?.includes('iPhone OS') && 
+          (Platform.constants.model?.includes('Simulator') || 
+           Platform.constants.model?.includes('simulator') ||
+           __DEV__ && Platform.constants.systemVersion?.includes('x86_64'))
+        );
+        
+        if (isIOSSimulator) {
+          // console.log('🤖 Running on iOS simulator - mock location detected');
+          isMockLocation = true;
+        }
       }
       
-      // Add more mock location detection logic here
-      this.notifyWebViewFakeGps(false);
-      return 0; // 0 = real location, 1 = mock location
+      this.notifyWebViewFakeGps(isMockLocation);
+      return isMockLocation ? 1 : 0; // 0 = real location, 1 = mock location
     } catch (error) {
+      // console.warn('Error detecting mock location:', error);
+      this.notifyWebViewFakeGps(false);
       return 0;
     }
   }
@@ -554,7 +617,7 @@ class LocationService {
         `);
       }
     } catch (error) {
-      console.warn('Could not notify WebView about fake GPS:', error);
+      // console.warn('Could not notify WebView about fake GPS:', error);
     }
   }
 
@@ -595,9 +658,9 @@ class LocationService {
         this.pendingRequests.shift();
       }
       
-      console.log('📋 Queued failed request. Total pending:', this.pendingRequests.length);
+      // console.log('📋 Queued failed request. Total pending:', this.pendingRequests.length);
     } catch (error) {
-      console.error('Error queueing failed request:', error);
+      // console.error('Error queueing failed request:', error);
     }
   }
 
@@ -605,7 +668,7 @@ class LocationService {
   private async processPendingRequests(): Promise<void> {
     if (this.pendingRequests.length === 0) return;
     
-    console.log('🔄 Processing', this.pendingRequests.length, 'pending requests...');
+    // console.log('🔄 Processing', this.pendingRequests.length, 'pending requests...');
     
     const requests = [...this.pendingRequests];
     this.pendingRequests = [];
@@ -613,9 +676,9 @@ class LocationService {
     for (const request of requests) {
       try {
         await this.sendLocationToAPI(request.locationData);
-        console.log('✅ Processed pending request:', request.id);
+        // console.log('✅ Processed pending request:', request.id);
       } catch (error) {
-        console.error('❌ Failed to process pending request:', request.id, error);
+        // console.error('❌ Failed to process pending request:', request.id, error);
         // Re-queue if still failing
         this.pendingRequests.push(request);
       }
@@ -640,12 +703,12 @@ class LocationService {
   // Force sync all pending data
   async forceSyncPendingData(): Promise<void> {
     if (this.pendingRequests.length > 0) {
-      console.log('🔄 Force syncing', this.pendingRequests.length, 'pending requests...');
+      // console.log('🔄 Force syncing', this.pendingRequests.length, 'pending requests...');
       await this.processPendingRequests();
     }
     
     if (this.lastKnownLocation) {
-      console.log('📍 Force sending current location...');
+      // console.log('📍 Force sending current location...');
       await this.sendLocationToAPI(this.lastKnownLocation);
     }
   }
@@ -653,11 +716,11 @@ class LocationService {
   // Update tracking configuration
   updateConfig(newConfig: Partial<LocationConfig>): void {
     this.config = { ...this.config, ...newConfig };
-    console.log('⚙️ Updated location config:', this.config);
+    // console.log('⚙️ Updated location config:', this.config);
     
     // Restart tracking if active to apply new config
     if (this.isTracking) {
-      console.log('🔄 Restarting tracking to apply new config...');
+      // console.log('🔄 Restarting tracking to apply new config...');
       this.stopLocationTracking();
       setTimeout(() => this.startLocationTracking(), 1000);
     }
@@ -666,7 +729,7 @@ class LocationService {
   // Update retry configuration (including timeout)
   updateRetryConfig(newConfig: Partial<RetryConfig>): void {
     this.retryConfig = { ...this.retryConfig, ...newConfig };
-    console.log('⚙️ Updated retry config:', this.retryConfig);
+    // console.log('⚙️ Updated retry config:', this.retryConfig);
   }
 
   // Auto-adjust timeout based on network conditions
@@ -680,19 +743,19 @@ class LocationService {
         
         if (connectivityTest.latency > 3000) { // Slow network
           newTimeout = 30000; // 30 seconds
-          console.log('🐌 Slow network detected, increasing timeout to 30s');
+          // console.log('🐌 Slow network detected, increasing timeout to 30s');
         } else if (connectivityTest.latency > 1500) { // Moderate network
           newTimeout = 25000; // 25 seconds
-          console.log('⚡ Moderate network speed, using 25s timeout');
+          // console.log('⚡ Moderate network speed, using 25s timeout');
         } else { // Fast network
           newTimeout = 15000; // 15 seconds
-          console.log('🚀 Fast network detected, using 15s timeout');
+          // console.log('🚀 Fast network detected, using 15s timeout');
         }
         
         this.updateRetryConfig({ apiTimeout: newTimeout });
       }
     } catch (error) {
-      console.warn('⚠️ Failed to adjust timeout based on network speed:', error);
+      // console.warn('⚠️ Failed to adjust timeout based on network speed:', error);
     }
   }
 
@@ -702,7 +765,7 @@ class LocationService {
       const timestamp = await AsyncStorage.getItem('lastLocationUpdate');
       return timestamp ? new Date(timestamp) : null;
     } catch (error) {
-      console.error('Error getting last location update:', error);
+      // console.error('Error getting last location update:', error);
       return null;
     }
   }
@@ -713,7 +776,7 @@ class LocationService {
       const cachedLocation = await AsyncStorage.getItem('lastLocation');
       return cachedLocation ? JSON.parse(cachedLocation) : null;
     } catch (error) {
-      console.error('Error getting cached location:', error);
+      // console.error('Error getting cached location:', error);
       return null;
     }
   }
@@ -726,9 +789,10 @@ class LocationService {
         .map(([key, cookie]) => `${key}=${cookie.value}`)
         .join('; ');
       this.sessionCookies = cookieString;
-      console.log('🍪 Loaded session cookies:', cookieString.substring(0, 100) + '...');
+      // console.log('🍪 Loaded session cookies on', Platform.OS + ':', cookieString.substring(0, 100) + '...');
+      // console.log('🍪 Cookie count on', Platform.OS + ':', Object.keys(cookies).length);
     } catch (error) {
-      console.error('Error loading session cookies:', error);
+      // console.error('Error loading session cookies on', Platform.OS + ':', error);
       this.sessionCookies = '';
     }
   }
@@ -738,9 +802,23 @@ class LocationService {
     try {
       const userNik = await AsyncStorage.getItem('userNik');
       const sessionToken = await AsyncStorage.getItem('sessionToken');
-      return !!(userNik && (sessionToken || this.sessionCookies));
+      
+      // Check if we have PHPSESSID cookie specifically
+      const hasPhpSessId = this.sessionCookies && this.sessionCookies.includes('PHPSESSID=');
+      const hasValidSession = sessionToken || hasPhpSessId;
+      
+      // console.log('🔍 [Authentication Check] Details:', {
+      //   hasUserNik: !!userNik,
+      //   userNik: userNik,
+      //   hasSessionToken: !!sessionToken,
+      //   hasPhpSessId: hasPhpSessId,
+      //   sessionCookiesLength: this.sessionCookies.length,
+      //   isAuthenticated: !!(userNik && hasValidSession)
+      // });
+      
+      return !!(userNik && hasValidSession);
     } catch (error) {
-      console.error('Error checking authentication:', error);
+      // console.error('Error checking authentication:', error);
       return false;
     }
   }
@@ -765,14 +843,14 @@ class LocationService {
       const latency = Date.now() - startTime;
       
       if (response.ok) {
-        console.log(`✅ API connectivity test passed (${latency}ms)`);
+        // console.log(`✅ API connectivity test passed (${latency}ms)`);
         return { success: true, latency };
       } else {
         return { success: false, error: `HTTP ${response.status}` };
       }
     } catch (error: any) {
       const latency = Date.now() - startTime;
-      console.warn(`⚠️ API connectivity test failed (${latency}ms):`, error.message);
+      // console.warn(`⚠️ API connectivity test failed (${latency}ms):`, error.message);
       return { success: false, error: error.message, latency };
     }
   }
@@ -780,7 +858,13 @@ class LocationService {
 
   // Update session cookies (call after login)
   async updateSessionCookies(): Promise<void> {
+    // console.log('🔄 [Cookie Refresh] Refreshing session cookies...');
     await this.loadSessionCookies();
+    // console.log('✅ [Cookie Refresh] Session cookies updated:', {
+    //   cookiesLength: this.sessionCookies.length,
+    //   hasPhpSessId: this.sessionCookies.includes('PHPSESSID='),
+    //   preview: this.sessionCookies.substring(0, 100) + '...'
+    // });
   }
 }
 

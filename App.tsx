@@ -112,19 +112,29 @@ function App() {
 
   const handleWebViewMessage = (event: any) => {
     const data = event.nativeEvent.data;
-    console.log('Message from WebView:', data);
+    console.log('📨 [WebView -> React Native] Raw message received:', data);
     
     try {
       const message = JSON.parse(data);
+      console.log('📨 [WebView -> React Native] Parsed JSON message:', message);
       
       // Handle both 'type' and 'event' fields for backward compatibility
       const messageType = message.type || message.event;
+      console.log('📨 [WebView -> React Native] Message type identified:', messageType);
       
       switch (messageType) {
         case 'USER_INFO':
+          console.log('👤 [WebView -> React Native] USER_INFO message received:', {
+            nik: message.nik,
+            data: message.data,
+            fullMessage: message
+          });
           if (message.nik) {
+            console.log('✅ [WebView -> React Native] Setting up LocationService with NIK:', message.nik);
             setupLocationService(message.nik);
-            console.log('Updated user NIK from WebView:', message.nik);
+            console.log('✅ [WebView -> React Native] User NIK successfully processed:', message.nik);
+          } else {
+            console.warn('⚠️ [WebView -> React Native] USER_INFO message received but NIK is missing or empty');
           }
           break;
           
@@ -185,16 +195,34 @@ function App() {
           break;
           
         case 'SET_CREDENTIALS':
-          console.log('Set credentials from WebView:', message);
-          handleSetCredentials(message.nik, message.device_id);
+          console.log('🔐 [WebView -> React Native] SET_CREDENTIALS message received:', {
+            nik: message.nik,
+            device_id: message.device_id,
+            fullMessage: message
+          });
+          if (message.nik) {
+            console.log('✅ [WebView -> React Native] Processing credentials with NIK:', message.nik);
+            handleSetCredentials(message.nik, message.device_id);
+            console.log('✅ [WebView -> React Native] Credentials successfully processed');
+          } else {
+            console.warn('⚠️ [WebView -> React Native] SET_CREDENTIALS message received but NIK is missing or empty');
+          }
           break;
           
         default:
-          console.log('Unknown message type:', messageType, message);
+          console.log('❓ [WebView -> React Native] Unknown message type received:', {
+            messageType,
+            fullMessage: message,
+            availableFields: Object.keys(message)
+          });
       }
     } catch (e) {
       // Not a JSON message, treat as plain text
-      console.log('Non-JSON message from WebView:', data);
+      console.log('⚠️ [WebView -> React Native] Non-JSON message received:', {
+        rawData: data,
+        dataType: typeof data,
+        error: e.message
+      });
     }
   };
 
@@ -364,17 +392,42 @@ function App() {
 
   // Handle set credentials from WebView
   const handleSetCredentials = async (nik: string, deviceId: string) => {
-    console.log('Setting credentials from WebView:', { nik, deviceId });
+    console.log('🔐 [Credentials Handler] Starting credential storage process...');
+    console.log('🔐 [Credentials Handler] Received NIK:', nik, 'Type:', typeof nik);
+    console.log('🔐 [Credentials Handler] Received Device ID:', deviceId, 'Type:', typeof deviceId);
+    
     try {
       // Store credentials in AsyncStorage for LocationService to use
+      console.log('📱 [AsyncStorage] Storing userNik...');
       await AsyncStorage.setItem('userNik', nik);
+      console.log('✅ [AsyncStorage] userNik stored successfully');
+      
+      console.log('📱 [AsyncStorage] Storing deviceId...');
       await AsyncStorage.setItem('deviceId', deviceId);
+      console.log('✅ [AsyncStorage] deviceId stored successfully');
+      
+      // Verify storage
+      const storedNik = await AsyncStorage.getItem('userNik');
+      const storedDeviceId = await AsyncStorage.getItem('deviceId');
+      console.log('🔍 [Verification] Stored NIK verification:', storedNik);
+      console.log('🔍 [Verification] Stored Device ID verification:', storedDeviceId);
       
       // Update LocationService configuration
+      console.log('⚙️ [LocationService] Setting up LocationService with NIK:', nik);
       await setupLocationService(nik);
-      console.log('✅ Credentials stored successfully');
+      
+      // Refresh session cookies to ensure PHPSESSID is loaded
+      console.log('🔄 [Credentials Handler] Refreshing session cookies...');
+      await LocationService.updateSessionCookies();
+      
+      console.log('✅ [Credentials Handler] All credentials stored and configured successfully');
     } catch (error) {
-      console.error('❌ Failed to store credentials:', error);
+      console.error('❌ [Credentials Handler] Failed to store credentials:', error);
+      console.error('❌ [Credentials Handler] Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
     }
   };
 
