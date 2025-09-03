@@ -189,7 +189,8 @@ class LocationService {
   async requestLocationPermission(): Promise<boolean> {
     try {
       if (Platform.OS === 'android') {
-        const granted = await PermissionsAndroid.request(
+        // First request foreground location permission
+        const foregroundGranted = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
           {
             title: 'Location Permission',
@@ -199,7 +200,30 @@ class LocationService {
             buttonPositive: 'OK',
           }
         );
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
+        
+        if (foregroundGranted !== PermissionsAndroid.RESULTS.GRANTED) {
+          console.log('❌ [DEBUG] Foreground location permission denied');
+          return false;
+        }
+        console.log('✅ [DEBUG] Foreground location permission granted');
+        
+        // For Android 10+ (API 29+), request background location separately
+        if (Platform.Version >= 29) {
+          const backgroundGranted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
+            {
+              title: 'Background Location Permission',
+              message: 'This app needs background location access to track attendance even when the app is closed. Please select "Allow all the time" for proper functionality.',
+              buttonNeutral: 'Ask Me Later',
+              buttonNegative: 'Cancel', 
+              buttonPositive: 'OK',
+            }
+          );
+          console.log('🔍 [DEBUG] Background permission result:', backgroundGranted);
+          return backgroundGranted === PermissionsAndroid.RESULTS.GRANTED;
+        }
+        
+        return true;
       } else if (Platform.OS === 'ios') {
         // For iOS, we need to test location permissions by attempting to get location
         return new Promise((resolve) => {
@@ -265,7 +289,7 @@ class LocationService {
       const deviceId = await AsyncStorage.getItem('deviceId');
 
       if (!userNik || !deviceId || userNik.trim() === '' || deviceId.trim() === '') {
-        // console.warn('⚠️ Cannot send location: userNik or deviceId is empty/null');
+        console.warn('⚠️ [DEBUG] Cannot send location: userNik or deviceId is empty/null');
         throw new Error('User NIK or Device ID is empty or not set. Please login through WebView first.');
       }
 
@@ -281,7 +305,7 @@ class LocationService {
         isvirtual: await this.detectMockLocation()
       };
 
-      // console.log('📍 API Payload Parameters:', payload);
+      console.log('📍 [DEBUG] API Payload Parameters:', payload);
       // console.log('📍 Sending location data (attempt ' + (retryCount + 1) + '):', {
       //   url: `${this.API_BASE_URL}gps_log.php`,
       //   method: 'POST',
@@ -319,12 +343,12 @@ class LocationService {
       clearTimeout(timeoutId);
 
       const responseText = await response.text();
-      // console.log('🌐 Network Response:', {
-      //   status: response.status,
-      //   statusText: response.statusText,
-      //   headers: Object.fromEntries(response.headers.entries()),
-      //   body: responseText.substring(0, 500) + (responseText.length > 500 ? '...' : '')
-      // });
+      console.log('🌐 [DEBUG] Network Response:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: responseText.substring(0, 500) + (responseText.length > 500 ? '...' : '')
+      });
 
       if (!response.ok) {
         // console.error('❌ HTTP Error Details:', {
@@ -346,7 +370,7 @@ class LocationService {
       }
       
       if (responseData.status === 'success') {
-        // console.log('✅ Location sent successfully:', responseData.message);
+        console.log('✅ [DEBUG] Location sent successfully:', responseData.message);
         this.retryCount = 0; // Reset retry count on success
         this.isOnline = true;
         await this.processPendingRequests(); // Process any pending requests
@@ -355,12 +379,12 @@ class LocationService {
         throw new Error(responseData.message || 'Server returned error status');
       }
     } catch (error: any) {
-      // console.error(`❌ Error sending location (attempt ${retryCount + 1}):`, {
-      //   message: error.message,
-      //   name: error.name,
-      //   stack: error.stack,
-      //   cause: error.cause,
-      // });
+      console.error(`❌ [DEBUG] Error sending location (attempt ${retryCount + 1}):`, {
+        message: error.message,
+        name: error.name,
+        stack: error.stack,
+        cause: error.cause,
+      });
       
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
         // console.error('🚫 Network fetch failed - possible connectivity issue');
@@ -415,7 +439,7 @@ class LocationService {
         return;
       }
 
-      // console.log('🟢 Starting real-time location tracking...');
+      console.log('🟢 [DEBUG] Starting real-time location tracking...');
       this.isTracking = true;
 
       // Send initial location immediately
