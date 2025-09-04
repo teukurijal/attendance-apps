@@ -40,6 +40,7 @@ function App() {
       ],
       ios: [
         PERMISSIONS.IOS.LOCATION_WHEN_IN_USE,
+        PERMISSIONS.IOS.LOCATION_ALWAYS,
       ],
     }) as Permission[];
 
