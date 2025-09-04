@@ -5,7 +5,17 @@
       "Bash(npx tsc:*)",
       "Bash(npx react-native run-android:*)",
       "Bash(rm:*)",
-      "Bash(gradlew.bat assembleRelease:*)"
+      "Bash(gradlew.bat assembleRelease:*)",
+      "Bash(pod install:*)",
+      "Bash(open ios/EmployeeAttendanceApp.xcworkspace)",
+      "Bash(xcrun simctl privacy:*)",
+      "Bash(xcodebuild:*)",
+      "Bash(xcrun simctl list:*)",
+      "Bash(xcrun simctl boot:*)",
+      "Bash(xcrun simctl location:*)",
+      "Bash(npm install)",
+      "Bash(npm install:*)",
+      "Bash(npx react-native run-ios:*)"
     ],
     "deny": []
   }
